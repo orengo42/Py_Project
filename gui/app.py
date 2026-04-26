@@ -3,124 +3,39 @@ import sys
 import pygame
 
 try:
-    from pygame._sdl2 import Window
+    from .screens import (
+        MenuScreen,
+        CheckHypothesisScreen,
+        CounterexamplesScreen,
+        GraphScreen,
+    )
 except ImportError:
-    Window = None
-
-try:
-    from .button import Button
-    from .screens import MenuScreen, CheckHypothesisScreen
-except ImportError:
-    from button import Button
-    from screens import MenuScreen, CheckHypothesisScreen
+    from screens import (
+        MenuScreen,
+        CheckHypothesisScreen,
+        CounterexamplesScreen,
+        GraphScreen,
+    )
 
 
-WINDOW_WIDTH = 1100
-WINDOW_HEIGHT = 720
-TOP_BAR_HEIGHT = 46
+INITIAL_WINDOW_WIDTH = 1100
+INITIAL_WINDOW_HEIGHT = 720
+MIN_WINDOW_WIDTH = 900
+MIN_WINDOW_HEIGHT = 620
 
 APP_TITLE = "Проверка математических гипотез"
-
-
-class TitleBar:
-    def __init__(self, app):
-        self.app = app
-
-        self.font = pygame.font.SysFont("arial", 22, bold=True)
-        self.button_font = pygame.font.SysFont("arial", 22, bold=True)
-
-        self.close_button = Button(
-            rect=(WINDOW_WIDTH - 44, 7, 32, 32),
-            text="×",
-            font=self.button_font,
-            on_click=self.app.close,
-            bg_color=(245, 220, 220),
-            hover_color=(235, 120, 120),
-            text_color=(80, 30, 30),
-            border_color=(180, 120, 120),
-            radius=8,
-        )
-
-        self.minimize_button = Button(
-            rect=(WINDOW_WIDTH - 84, 7, 32, 32),
-            text="−",
-            font=self.button_font,
-            on_click=self.app.minimize,
-            bg_color=(230, 230, 240),
-            hover_color=(210, 210, 230),
-            text_color=(40, 40, 60),
-            border_color=(160, 160, 180),
-            radius=8,
-        )
-
-        self.dragging = False
-
-    def handle_event(self, event):
-      if self.close_button.handle_event(event):
-          return True
-
-      if self.minimize_button.handle_event(event):
-          return True
-
-      if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-          if event.pos[1] <= TOP_BAR_HEIGHT:
-              self.dragging = True
-              return True
-
-      if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-          if self.dragging:
-              self.dragging = False
-              return True
-
-          return False
-
-      if event.type == pygame.MOUSEMOTION and self.dragging:
-          self.move_window(event.rel)
-          return True
-
-      return False
-
-    def move_window(self, rel):
-        if self.app.window is None:
-            return
-
-        try:
-            x, y = self.app.window.position
-            self.app.window.position = (x + rel[0], y + rel[1])
-        except Exception:
-            pass
-
-    def draw(self, surface):
-        bar_rect = pygame.Rect(0, 0, WINDOW_WIDTH, TOP_BAR_HEIGHT)
-
-        pygame.draw.rect(surface, (245, 245, 250), bar_rect)
-        pygame.draw.line(
-            surface,
-            (200, 200, 215),
-            (0, TOP_BAR_HEIGHT - 1),
-            (WINDOW_WIDTH, TOP_BAR_HEIGHT - 1),
-            1,
-        )
-
-        icon_rect = self.app.icon_surface.get_rect()
-        icon_rect.center = (28, TOP_BAR_HEIGHT // 2)
-        surface.blit(self.app.icon_surface, icon_rect)
-
-        title_surface = self.font.render(APP_TITLE, True, (30, 30, 45))
-        title_rect = title_surface.get_rect(midleft=(58, TOP_BAR_HEIGHT // 2))
-        surface.blit(title_surface, title_rect)
-
-        self.minimize_button.draw(surface)
-        self.close_button.draw(surface)
 
 
 class App:
     def __init__(self):
         pygame.init()
 
+        self.width = INITIAL_WINDOW_WIDTH
+        self.height = INITIAL_WINDOW_HEIGHT
+
         self.screen = pygame.display.set_mode(
-            (WINDOW_WIDTH, WINDOW_HEIGHT),
-            pygame.NOFRAME,
+            (self.width, self.height),
+            pygame.RESIZABLE,
         )
 
         pygame.display.set_caption(APP_TITLE)
@@ -132,22 +47,14 @@ class App:
         self.icon_surface = pygame.image.load(self.icon_path).convert_alpha()
         pygame.display.set_icon(self.icon_surface)
 
-        self.window = None
-
-        if Window is not None:
-            try:
-                self.window = Window.from_display_module()
-            except Exception:
-                self.window = None
-
         self.clock = pygame.time.Clock()
         self.running = True
-
-        self.title_bar = TitleBar(self)
 
         self.screens = {
             "menu": MenuScreen(self),
             "check": CheckHypothesisScreen(self),
+            "counterexamples": CounterexamplesScreen(self),
+            "graph": GraphScreen(self),
         }
 
         self.current_screen_name = "menu"
@@ -170,11 +77,18 @@ class App:
         self.current_screen_name = name
         self.current_screen = self.screens[name]
 
+    def open_counterexamples(self, expression, counterexamples):
+        screen = self.screens["counterexamples"]
+        screen.set_data(expression, counterexamples)
+        self.set_screen("counterexamples")
+
+    def open_graph(self, graph_number, expression, points):
+        screen = self.screens["graph"]
+        screen.set_data(graph_number, expression, points)
+        self.set_screen("graph")
+
     def close(self):
         self.running = False
-
-    def minimize(self):
-        pygame.display.iconify()
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -182,7 +96,15 @@ class App:
                 self.running = False
                 return
 
-            if self.title_bar.handle_event(event):
+            if event.type == pygame.VIDEORESIZE:
+                self.width = max(MIN_WINDOW_WIDTH, event.w)
+                self.height = max(MIN_WINDOW_HEIGHT, event.h)
+
+                self.screen = pygame.display.set_mode(
+                    (self.width, self.height),
+                    pygame.RESIZABLE,
+                )
+
                 continue
 
             self.current_screen.handle_event(event)
@@ -193,13 +115,11 @@ class App:
     def draw(self):
         self.screen.fill((235, 238, 245))
 
-        self.title_bar.draw(self.screen)
-
         content_rect = pygame.Rect(
             0,
-            TOP_BAR_HEIGHT,
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT - TOP_BAR_HEIGHT,
+            0,
+            self.width,
+            self.height,
         )
 
         self.current_screen.draw(self.screen, content_rect)
