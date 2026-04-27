@@ -9,9 +9,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-*.pyc
-.pytest_cache/
-
 # Environment variables
 .env
 
