@@ -41,7 +41,7 @@ class Checkbox:
             full_rect = pygame.Rect(
                 self.rect.left - 12,
                 self.rect.top - 14,
-                380,
+                390,
                 self.rect.height + 28,
             )
 
@@ -107,10 +107,10 @@ class RadioButton:
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             full_rect = pygame.Rect(
-                self.rect.left - 12,
-                self.rect.top - 12,
+                self.rect.left - 14,
+                self.rect.top - 15,
                 250,
-                self.rect.height + 24,
+                58,
             )
 
             if full_rect.collidepoint(event.pos):
@@ -182,13 +182,12 @@ class OnScreenKeyboard:
                 ("is_odd(", "is_odd("),
             ],
             [
-                ("n", "n"),
                 ("fact(", "fact("),
                 ("gcd(", "gcd("),
                 ("lcm(", "lcm("),
                 ("divides(", "divides("),
                 ("phi(", "phi("),
-                ("tau(", "tau("),
+                ("tau(", "tau(")
             ],
         ]
 
@@ -227,6 +226,14 @@ class OnScreenKeyboard:
 
     def press_key(self, value):
         self.target_textbox.active = True
+
+        if value == "BACKSPACE":
+            if hasattr(self.target_textbox, "backspace"):
+                self.target_textbox.backspace()
+            elif self.target_textbox.text:
+                self.target_textbox.text = self.target_textbox.text[:-1]
+            return
+
         self.target_textbox.insert_text(value)
 
     def handle_event(self, event):

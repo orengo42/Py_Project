@@ -65,9 +65,6 @@ class App:
         self.current_screen = self.screens[self.current_screen_name]
 
     def create_icon_if_needed(self):
-        import os
-        import pygame
-
         os.makedirs(self.assets_dir, exist_ok=True)
 
         surface = pygame.Surface((64, 64), pygame.SRCALPHA)
@@ -79,7 +76,12 @@ class App:
             b = int(230 + (255 - 230) * t)
             pygame.draw.line(surface, (r, g, b), (0, y), (64, y))
 
-        pygame.draw.rect(surface, (255, 255, 255, 35), (2, 2, 60, 60), border_radius=14)
+        pygame.draw.rect(
+            surface,
+            (255, 255, 255, 35),
+            (2, 2, 60, 60),
+            border_radius=14,
+        )
 
         sigma_points = [
             (43, 15),
@@ -88,8 +90,8 @@ class App:
             (23, 48),
             (43, 48),
         ]
-        pygame.draw.lines(surface, (255, 255, 255), False, sigma_points, 6)
 
+        pygame.draw.lines(surface, (255, 255, 255), False, sigma_points, 6)
         pygame.image.save(surface, self.icon_path)
 
     def set_screen(self, name):

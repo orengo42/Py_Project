@@ -4,16 +4,39 @@ import pygame
 
 TRUE_COLOR = (38, 220, 120)
 FALSE_COLOR = (255, 90, 105)
-AXIS_COLOR = (145, 156, 185)
-GRID_COLOR = (58, 70, 105)
+AXIS_COLOR = (200, 210, 235)
+GRID_COLOR = (60, 74, 108)
 TEXT_COLOR = (232, 236, 255)
 MUTED_TEXT = (155, 164, 190)
-BG_COLOR = (28, 37, 60)
-BORDER_COLOR = (82, 96, 132)
-CYAN = (87, 221, 255)
+BG_COLOR = (28, 38, 62)
+BORDER_COLOR = (90, 105, 145)
+POINT_COLOR = (110, 220, 255)
 
 
-def draw_truth_graph(surface, rect, truth_points, text_font, small_font):
+def nice_step(value):
+    if value <= 0:
+        return 1
+
+    power = math.floor(math.log10(value))
+    base = 10 ** power
+    fraction = value / base
+
+    if fraction <= 1:
+        return base
+
+    if fraction <= 2:
+        return 2 * base
+
+    if fraction <= 5:
+        return 5 * base
+
+    return 10 * base
+
+
+def draw_truth_graph(surface, rect, truth_points, text_font, small_font, mouse_pos=None):
+    if mouse_pos is None:
+        mouse_pos = pygame.mouse.get_pos()
+
     pygame.draw.rect(surface, BG_COLOR, rect, border_radius=16)
     pygame.draw.rect(surface, BORDER_COLOR, rect, 2, border_radius=16)
 
@@ -39,12 +62,14 @@ def draw_truth_graph(surface, rect, truth_points, text_font, small_font):
         rect.height - top_padding - bottom_padding,
     )
 
-    if plot_rect.width <= 0 or plot_rect.height <= 0:
-        return
+    xs = [point[0] for point in truth_points]
 
-    max_x = max(point[0] for point in truth_points)
-    graph_min_x = 0
-    graph_max_x = max(1, max_x)
+    min_x = min(xs)
+    max_x = max(xs)
+
+    if min_x == max_x:
+        min_x -= 1
+        max_x += 1
 
     y_true = int(plot_rect.top + plot_rect.height * 0.25)
     y_false = int(plot_rect.top + plot_rect.height * 0.75)
@@ -62,19 +87,10 @@ def draw_truth_graph(surface, rect, truth_points, text_font, small_font):
     surface.blit(false_label, false_label.get_rect(midright=(plot_rect.left - 12, y_false)))
 
     tick_count = 6
-    tick_values = []
 
-    for i in range(tick_count):
-        value = round(graph_min_x + (graph_max_x - graph_min_x) * i / (tick_count - 1))
-
-        if value not in tick_values:
-            tick_values.append(value)
-
-    if 0 not in tick_values:
-        tick_values.insert(0, 0)
-
-    for value in tick_values:
-        px = plot_rect.left + (value - graph_min_x) / (graph_max_x - graph_min_x) * plot_rect.width
+    for index in range(tick_count):
+        value = round(min_x + (max_x - min_x) * index / (tick_count - 1))
+        px = plot_rect.left + (value - min_x) / (max_x - min_x) * plot_rect.width
         px = int(px)
 
         pygame.draw.line(surface, AXIS_COLOR, (px, plot_rect.bottom), (px, plot_rect.bottom + 6), 1)
@@ -83,92 +99,170 @@ def draw_truth_graph(surface, rect, truth_points, text_font, small_font):
         value_rect = value_surface.get_rect(midtop=(px, plot_rect.bottom + 10))
         surface.blit(value_surface, value_rect)
 
-    x_label = small_font.render("n", True, TEXT_COLOR)
+    x_label = small_font.render("x", True, TEXT_COLOR)
     surface.blit(x_label, x_label.get_rect(midtop=(plot_rect.centerx, plot_rect.bottom + 34)))
 
-    point_radius = 4
+    hovered = None
+    radius = 4
 
     if len(truth_points) > 1000:
-        point_radius = 3
+        radius = 3
 
     if len(truth_points) > 5000:
-        point_radius = 2
+        radius = 2
 
     for x_value, is_true in truth_points:
-        px = plot_rect.left + (x_value - graph_min_x) / (graph_max_x - graph_min_x) * plot_rect.width
+        px = plot_rect.left + (x_value - min_x) / (max_x - min_x) * plot_rect.width
         py = y_true if is_true else y_false
         color = TRUE_COLOR if is_true else FALSE_COLOR
 
-        pygame.draw.circle(surface, color, (int(px), int(py)), point_radius)
+        px = int(px)
+        py = int(py)
 
-    pygame.draw.circle(surface, TRUE_COLOR, (rect.right - 190, rect.top + 24), 6)
-    legend_true = small_font.render("гипотеза верна", True, TEXT_COLOR)
-    surface.blit(legend_true, (rect.right - 176, rect.top + 14))
+        pygame.draw.circle(surface, color, (px, py), radius)
 
-    pygame.draw.circle(surface, FALSE_COLOR, (rect.right - 190, rect.top + 50), 6)
-    legend_false = small_font.render("гипотеза неверна", True, TEXT_COLOR)
-    surface.blit(legend_false, (rect.right - 176, rect.top + 40))
+        if math.hypot(mouse_pos[0] - px, mouse_pos[1] - py) <= max(8, radius + 4):
+            hovered = (x_value, is_true, px, py)
 
+    if hovered is not None:
+        x_value, is_true, px, py = hovered
+        value_text = "true" if is_true else "false"
+        tooltip_text = f"x = {x_value}, значение = {value_text}"
 
-import math
-import pygame
+        tooltip_surface = small_font.render(tooltip_text, True, TEXT_COLOR)
+        tooltip_rect = tooltip_surface.get_rect()
+        tooltip_rect.topleft = (px + 12, py - 34)
+        tooltip_rect.inflate_ip(18, 12)
 
-BG_COLOR = (28, 38, 62)
-BORDER_COLOR = (90, 105, 145)
-GRID_COLOR = (60, 74, 108)
-AXIS_COLOR = (180, 190, 220)
-TEXT_COLOR = (230, 235, 255)
-MUTED_TEXT = (150, 160, 190)
-LINE_COLOR = (255, 208, 90)
-POINT_COLOR = (255, 208, 90)
-CYAN = (88, 221, 255)
+        pygame.draw.rect(surface, (18, 25, 44), tooltip_rect, border_radius=8)
+        pygame.draw.rect(surface, BORDER_COLOR, tooltip_rect, 1, border_radius=8)
+        surface.blit(tooltip_surface, (tooltip_rect.left + 9, tooltip_rect.top + 6))
 
 
-def nice_step(value):
-    if value <= 0:
-        return 1
+def draw_truth_graph_2d(surface, rect, points, text_font, small_font, mouse_pos=None):
+    if mouse_pos is None:
+        mouse_pos = pygame.mouse.get_pos()
 
-    power = math.floor(math.log10(value))
-    base = 10 ** power
-    fraction = value / base
+    pygame.draw.rect(surface, BG_COLOR, rect, border_radius=16)
+    pygame.draw.rect(surface, BORDER_COLOR, rect, 2, border_radius=16)
 
-    if fraction <= 1:
-        return base
-    if fraction <= 2:
-        return 2 * base
-    if fraction <= 5:
-        return 5 * base
-    return 10 * base
+    if not points:
+        empty_surface = text_font.render(
+            "Нет данных для построения графика.",
+            True,
+            MUTED_TEXT,
+        )
+        empty_rect = empty_surface.get_rect(center=rect.center)
+        surface.blit(empty_surface, empty_rect)
+        return
 
+    left_padding = 70
+    right_padding = 35
+    top_padding = 35
+    bottom_padding = 65
 
-import math
-import pygame
+    plot_rect = pygame.Rect(
+        rect.left + left_padding,
+        rect.top + top_padding,
+        rect.width - left_padding - right_padding,
+        rect.height - top_padding - bottom_padding,
+    )
 
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
 
-BG_COLOR = (28, 38, 62)
-BORDER_COLOR = (90, 105, 145)
-GRID_COLOR = (60, 74, 108)
-AXIS_COLOR = (200, 210, 235)
-TEXT_COLOR = (230, 235, 255)
-MUTED_TEXT = (150, 160, 190)
-POINT_COLOR = (110, 220, 255)
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
 
+    if min_x == max_x:
+        min_x -= 1
+        max_x += 1
 
-def nice_step(value):
-    if value <= 0:
-        return 1
+    if min_y == max_y:
+        min_y -= 1
+        max_y += 1
 
-    power = math.floor(math.log10(value))
-    base = 10 ** power
-    fraction = value / base
+    pygame.draw.line(surface, AXIS_COLOR, (plot_rect.left, plot_rect.bottom), (plot_rect.right, plot_rect.bottom), 2)
+    pygame.draw.line(surface, AXIS_COLOR, (plot_rect.left, plot_rect.top), (plot_rect.left, plot_rect.bottom), 2)
 
-    if fraction <= 1:
-        return base
-    if fraction <= 2:
-        return 2 * base
-    if fraction <= 5:
-        return 5 * base
-    return 10 * base
+    x_label = small_font.render("x", True, TEXT_COLOR)
+    y_label = small_font.render("y", True, TEXT_COLOR)
+
+    surface.blit(x_label, (plot_rect.right - 12, plot_rect.bottom + 30))
+    surface.blit(y_label, (plot_rect.left - 28, plot_rect.top))
+
+    tick_count = 6
+
+    for index in range(tick_count):
+        x_value = round(min_x + (max_x - min_x) * index / (tick_count - 1))
+        px = plot_rect.left + (x_value - min_x) / (max_x - min_x) * plot_rect.width
+        px = int(px)
+
+        pygame.draw.line(surface, GRID_COLOR, (px, plot_rect.top), (px, plot_rect.bottom), 1)
+
+        label = small_font.render(str(x_value), True, MUTED_TEXT)
+        surface.blit(label, label.get_rect(midtop=(px, plot_rect.bottom + 8)))
+
+    for index in range(tick_count):
+        y_value = round(min_y + (max_y - min_y) * index / (tick_count - 1))
+        py = plot_rect.bottom - (y_value - min_y) / (max_y - min_y) * plot_rect.height
+        py = int(py)
+
+        pygame.draw.line(surface, GRID_COLOR, (plot_rect.left, py), (plot_rect.right, py), 1)
+
+        label = small_font.render(str(y_value), True, MUTED_TEXT)
+        surface.blit(label, label.get_rect(midright=(plot_rect.left - 8, py)))
+
+    point_count = len(points)
+    radius = 5
+
+    if point_count > 1000:
+        radius = 3
+
+    if point_count > 5000:
+        radius = 2
+
+    hovered = None
+
+    for x_value, y_value, value, error_code in points:
+        px = plot_rect.left + (x_value - min_x) / (max_x - min_x) * plot_rect.width
+        py = plot_rect.bottom - (y_value - min_y) / (max_y - min_y) * plot_rect.height
+
+        px = int(px)
+        py = int(py)
+
+        if error_code is not None:
+            color = (255, 190, 90)
+        elif value is True:
+            color = TRUE_COLOR
+        else:
+            color = FALSE_COLOR
+
+        pygame.draw.circle(surface, color, (px, py), radius)
+
+        if math.hypot(mouse_pos[0] - px, mouse_pos[1] - py) <= max(8, radius + 4):
+            hovered = (x_value, y_value, value, error_code, px, py)
+
+    if hovered is not None:
+        x_value, y_value, value, error_code, px, py = hovered
+
+        if error_code is not None:
+            value_text = f"error: {error_code}"
+        else:
+            value_text = "true" if value else "false"
+
+        tooltip_text = f"x = {x_value}, y = {y_value}, значение = {value_text}"
+
+        tooltip_surface = small_font.render(tooltip_text, True, TEXT_COLOR)
+        tooltip_rect = tooltip_surface.get_rect()
+        tooltip_rect.topleft = (px + 12, py - 34)
+        tooltip_rect.inflate_ip(18, 12)
+
+        pygame.draw.rect(surface, (18, 25, 44), tooltip_rect, border_radius=8)
+        pygame.draw.rect(surface, BORDER_COLOR, tooltip_rect, 1, border_radius=8)
+        surface.blit(tooltip_surface, (tooltip_rect.left + 9, tooltip_rect.top + 6))
 
 
 def draw_function_graph(
@@ -267,6 +361,7 @@ def draw_function_graph(
     tick_step_y = nice_step(max((visible_max_y - visible_min_y) / 6, 1))
 
     current_x = math.floor(visible_min_x / tick_step_x) * tick_step_x
+
     while current_x <= visible_max_x:
         px, _ = to_screen(current_x, center_y_value)
 
@@ -286,6 +381,7 @@ def draw_function_graph(
         current_x += tick_step_x
 
     current_y = math.floor(visible_min_y / tick_step_y) * tick_step_y
+
     while current_y <= visible_max_y:
         _, py = to_screen(center_x_value, current_y)
 
@@ -335,7 +431,10 @@ def draw_function_graph(
 
     surface.blit(
         x_label,
-        (plot_rect.right - 18, axis_y + 6 if axis_y < plot_rect.bottom - 20 else plot_rect.bottom + 4),
+        (
+            plot_rect.right - 18,
+            axis_y + 6 if axis_y < plot_rect.bottom - 20 else plot_rect.bottom + 4,
+        ),
     )
     surface.blit(y_label, (axis_x + 6, plot_rect.top + 2))
 

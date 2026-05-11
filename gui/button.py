@@ -78,26 +78,26 @@ class Button:
             pygame.draw.line(surface, color, (x - 1, y + 5), (x + 7, y - 6), 3)
 
         elif self.icon_name == "calculator":
-          body = pygame.Rect(x - 10, y - 10, 20, 20)
-          pygame.draw.rect(surface, color, body, 2, border_radius=4)
+            body = pygame.Rect(x - 10, y - 10, 20, 20)
+            pygame.draw.rect(surface, color, body, 2, border_radius=4)
 
-          screen_rect = pygame.Rect(x - 6, y - 7, 12, 4)
-          pygame.draw.rect(surface, color, screen_rect, 1, border_radius=2)
+            screen_rect = pygame.Rect(x - 6, y - 7, 12, 4)
+            pygame.draw.rect(surface, color, screen_rect, 1, border_radius=2)
 
-          dot_size = 3
-          start_x = x - 6
-          start_y = y + 1
-          gap = 5
+            dot_size = 3
+            start_x = x - 6
+            start_y = y + 1
+            gap = 5
 
-          for row in range(2):
-              for col in range(3):
-                  dot = pygame.Rect(
-                      start_x + col * gap,
-                      start_y + row * gap,
-                      dot_size,
-                      dot_size,
-                  )
-                  pygame.draw.rect(surface, color, dot, border_radius=1)
+            for row in range(2):
+                for col in range(3):
+                    dot = pygame.Rect(
+                        start_x + col * gap,
+                        start_y + row * gap,
+                        dot_size,
+                        dot_size,
+                    )
+                    pygame.draw.rect(surface, color, dot, border_radius=1)
 
         elif self.icon_name == "function":
             points = [
@@ -134,14 +134,10 @@ class Button:
 
         elif self.icon_name == "graph":
             base_y = y + half - 3
+
             for i, height in enumerate([8, 14, 20]):
                 bar = pygame.Rect(x - half + 5 + i * 7, base_y - height, 4, height)
                 pygame.draw.rect(surface, color, bar, border_radius=2)
-
-        elif self.icon_name == "close":
-            pygame.draw.circle(surface, color, (x, y), half, 2)
-            pygame.draw.line(surface, color, (x - 6, y - 6), (x + 6, y + 6), 3)
-            pygame.draw.line(surface, color, (x + 6, y - 6), (x - 6, y + 6), 3)
 
         elif self.icon_name == "sigma":
             points = [

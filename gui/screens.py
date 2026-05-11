@@ -5,40 +5,46 @@ try:
     from .button import Button
     from .textbox import TextBox
     from .widgets import Checkbox, OnScreenKeyboard, RadioButton
-    from .graph import draw_truth_graph, draw_function_graph
+    from .graph import draw_truth_graph, draw_truth_graph_2d, draw_function_graph
 except ImportError:
     from button import Button
     from textbox import TextBox
     from widgets import Checkbox, OnScreenKeyboard, RadioButton
-    from graph import draw_truth_graph, draw_function_graph
+    from graph import draw_truth_graph, draw_truth_graph_2d, draw_function_graph
 
 
 try:
     from core.checker import check_hypothesis
     from core.values import build_values
+    from core.checker2d import (
+        check_hypothesis_2d,
+        get_counterexample_points,
+    )
+    from core.function_docs import get_function_docs
 except ImportError:
     check_hypothesis = None
     build_values = None
+    check_hypothesis_2d = None
+    get_counterexample_points = None
+
+    def get_function_docs():
+        return []
 
 
 DEFAULT_START = 1
 DEFAULT_END = 10000
 MAX_RANGE_VALUE = 10000
 
-BG = (17, 25, 46)
-BG_DARK = (12, 20, 42)
-BG_LIGHT = (25, 32, 58)
+BG_DARK = (8, 20, 55)
+BG_LIGHT = (20, 14, 48)
 CARD = (32, 42, 67)
-CARD_2 = (42, 51, 78)
 BORDER = (73, 86, 120)
 
 TEXT = (234, 238, 255)
 MUTED = (150, 158, 182)
 
 CYAN = (88, 221, 255)
-PINK = (255, 76, 160)
 GREEN = (0, 205, 112)
-RED = (255, 70, 50)
 ORANGE = (255, 190, 90)
 
 
@@ -59,6 +65,11 @@ ERROR_MESSAGES = {
     "VALUE_ERROR": "Некорректное значение для функции.",
     "RUNTIME_ERROR": "Ошибка во время вычисления.",
     "NOT_BOOLEAN_RESULT": "Гипотеза должна возвращать True или False.",
+    "TOO_MANY_POINTS": "Слишком много точек для проверки. Максимум: 10000.",
+    "SAME_VARIABLE_NAMES": "Имена переменных x и y не должны совпадать.",
+    "EMPTY_VARIABLE_NAME": "Пустое имя переменной.",
+    "INVALID_VARIABLE_NAME": "Некорректное имя переменной.",
+    "NO_VARIABLES": "Не указаны переменные.",
 }
 
 
@@ -99,6 +110,22 @@ def get_truth_graph_points(values_result):
     return truth_points
 
 
+def get_truth_graph_points_2d(result):
+    points = []
+
+    for point in result.points:
+        points.append(
+            (
+                point.x_value,
+                point.y_value,
+                point.value,
+                point.error_code,
+            )
+        )
+
+    return points
+
+
 def get_numeric_function_points(values_result):
     points = []
 
@@ -116,16 +143,20 @@ def get_numeric_function_points(values_result):
     return points
 
 
-def draw_background(surface, rect):
-    top_color = (8, 20, 55)
-    bottom_color = (20, 14, 48)
+def format_counterexample(value):
+    if isinstance(value, tuple):
+        return f"({value[0]}, {value[1]})"
 
+    return str(value)
+
+
+def draw_background(surface, rect):
     for y in range(rect.height):
         t = y / max(1, rect.height - 1)
 
-        r = int(top_color[0] + (bottom_color[0] - top_color[0]) * t)
-        g = int(top_color[1] + (bottom_color[1] - top_color[1]) * t)
-        b = int(top_color[2] + (bottom_color[2] - top_color[2]) * t)
+        r = int(BG_DARK[0] + (BG_LIGHT[0] - BG_DARK[0]) * t)
+        g = int(BG_DARK[1] + (BG_LIGHT[1] - BG_DARK[1]) * t)
+        b = int(BG_DARK[2] + (BG_LIGHT[2] - BG_DARK[2]) * t)
 
         pygame.draw.line(
             surface,
@@ -165,6 +196,191 @@ def make_primary_button(rect, text, font, on_click, icon_name="check"):
     )
 
 
+class FunctionDocsPanel:
+    def __init__(self, font, small_font):
+        self.font = font
+        self.small_font = small_font
+
+        self.visible = False
+        self.scroll_offset = 0
+        self.content_height = 0
+
+        self.search_box = TextBox(
+            rect=(0, 0, 350, 42),
+            font=small_font,
+            placeholder="Поиск функции...",
+            text_color=TEXT,
+            placeholder_color=MUTED,
+            bg_color=(48, 58, 85),
+            border_color=(82, 96, 132),
+            active_border_color=CYAN,
+        )
+
+        self.docs = get_function_docs()
+
+    def toggle(self):
+        self.visible = not self.visible
+        self.scroll_offset = 0
+
+        if not self.visible:
+            self.search_box.active = False
+
+    def update(self, dt):
+        if self.visible:
+            self.search_box.update(dt)
+
+    def filter_docs(self):
+        query = self.search_box.text.strip().lower()
+
+        if not query:
+            return self.docs
+
+        result = []
+
+        for doc in self.docs:
+            aliases = " ".join(doc.aliases).lower()
+
+            text = (
+                f"{doc.name} "
+                f"{doc.signature} "
+                f"{doc.category} "
+                f"{doc.description} "
+                f"{aliases}"
+            ).lower()
+
+            if query in text:
+                result.append(doc)
+
+        return result
+
+    def handle_event(self, event):
+        if not self.visible:
+            return False
+
+        panel_rect = pygame.Rect(20, 80, 430, 620)
+
+        if self.search_box.handle_event(event):
+            return True
+
+        if event.type == pygame.MOUSEWHEEL:
+            mouse_pos = pygame.mouse.get_pos()
+
+            if panel_rect.collidepoint(mouse_pos):
+                self.scroll_offset -= event.y * 36
+                max_scroll = max(0, self.content_height - (panel_rect.height - 110))
+                self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+                return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if panel_rect.collidepoint(event.pos):
+                return True
+
+        return False
+
+    def draw(self, surface, content_rect):
+        if not self.visible:
+            return
+
+        panel_rect = pygame.Rect(
+            content_rect.left + 20,
+            content_rect.top + 80,
+            430,
+            content_rect.height - 140,
+        )
+
+        pygame.draw.rect(surface, (24, 33, 56), panel_rect, border_radius=16)
+        pygame.draw.rect(surface, BORDER, panel_rect, 2, border_radius=16)
+
+        title_surface = self.font.render("Все функции", True, CYAN)
+        surface.blit(title_surface, (panel_rect.left + 20, panel_rect.top + 16))
+
+        self.search_box.rect.topleft = (panel_rect.left + 20, panel_rect.top + 58)
+        self.search_box.draw(surface)
+
+        list_rect = pygame.Rect(
+            panel_rect.left + 16,
+            self.search_box.rect.bottom + 16,
+            panel_rect.width - 32,
+            panel_rect.height - 95,
+        )
+
+        old_clip = surface.get_clip()
+        surface.set_clip(list_rect)
+
+        docs = self.filter_docs()
+        y = list_rect.top - self.scroll_offset
+        current_category = None
+
+        for doc in docs:
+            if doc.category != current_category:
+                current_category = doc.category
+
+                category_surface = self.small_font.render(
+                    current_category,
+                    True,
+                    (120, 225, 255),
+                )
+                surface.blit(category_surface, (list_rect.left + 4, y))
+                y += 28
+
+            signature_surface = self.small_font.render(
+                doc.signature,
+                True,
+                TEXT,
+            )
+            surface.blit(signature_surface, (list_rect.left + 16, y))
+            y += 24
+
+            description_surface = self.small_font.render(
+                doc.description,
+                True,
+                MUTED,
+            )
+            surface.blit(description_surface, (list_rect.left + 16, y))
+            y += 24
+
+            if doc.aliases:
+                aliases_text = "Псевдонимы: " + ", ".join(doc.aliases)
+                aliases_surface = self.small_font.render(
+                    aliases_text,
+                    True,
+                    (135, 145, 170),
+                )
+                surface.blit(aliases_surface, (list_rect.left + 16, y))
+                y += 24
+
+            y += 12
+
+        self.content_height = y - list_rect.top + self.scroll_offset
+
+        surface.set_clip(old_clip)
+
+        max_scroll = max(0, self.content_height - list_rect.height)
+
+        if max_scroll > 0:
+            track_rect = pygame.Rect(
+                panel_rect.right - 12,
+                list_rect.top,
+                5,
+                list_rect.height,
+            )
+            pygame.draw.rect(surface, (60, 70, 100), track_rect, border_radius=3)
+
+            thumb_height = max(40, int(list_rect.height * list_rect.height / self.content_height))
+            thumb_y = track_rect.top + int(
+                (track_rect.height - thumb_height) * self.scroll_offset / max_scroll
+            )
+
+            thumb_rect = pygame.Rect(
+                track_rect.left,
+                thumb_y,
+                track_rect.width,
+                thumb_height,
+            )
+
+            pygame.draw.rect(surface, CYAN, thumb_rect, border_radius=3)
+
+
 class MenuScreen:
     def __init__(self, app):
         self.app = app
@@ -172,7 +388,6 @@ class MenuScreen:
         self.title_font = pygame.font.SysFont("arial", 62, bold=True)
         self.subtitle_font = pygame.font.SysFont("arial", 22)
         self.button_font = pygame.font.SysFont("arial", 26, bold=True)
-        self.small_font = pygame.font.SysFont("arial", 16, bold=True)
 
         self.check_button = Button(
             rect=(0, 0, 560, 74),
@@ -297,7 +512,7 @@ class CheckHypothesisScreen:
         self.textbox = TextBox(
             rect=(0, 0, 760, 60),
             font=self.button_font,
-            placeholder="Например: is_prime(n) or n == 1",
+            placeholder="Например: is_prime(x) or x == 1",
             text_color=TEXT,
             placeholder_color=MUTED,
             bg_color=(48, 58, 85),
@@ -361,11 +576,11 @@ class CheckHypothesisScreen:
             icon_name="check",
         )
 
-        self.docs_button = Button(
-            rect=(0, 0, 46, 38),
-            text="",
-            font=self.button_font,
-            on_click=self.open_docs,
+        self.functions_button = Button(
+            rect=(0, 0, 170, 42),
+            text="Все функции",
+            font=self.small_font,
+            on_click=self.toggle_functions,
             bg_color=(35, 45, 70),
             hover_color=(50, 65, 100),
             text_color=TEXT,
@@ -374,6 +589,8 @@ class CheckHypothesisScreen:
             icon_name="menu",
             icon_color=TEXT,
         )
+
+        self.function_docs_panel = FunctionDocsPanel(self.text_font, self.small_font)
 
         self.all_counterexamples_button = Button(
             rect=(0, 0, 220, 44),
@@ -443,7 +660,7 @@ class CheckHypothesisScreen:
         self.show_graph_button = False
 
         self.save_message = ""
-        self.docs_message = ""
+        self.graph_dimension = "1d"
 
         self.scroll_offset = 0
         self.content_height = 0
@@ -451,11 +668,8 @@ class CheckHypothesisScreen:
     def set_variable_mode(self, mode):
         self.variable_mode = mode
 
-    def open_docs(self):
-        self.docs_message = (
-            "Подсказки: используйте выражения вроде "
-            "is_prime(n), n % 2 == 0, sqrt(n) % 1 == 0."
-        )
+    def toggle_functions(self):
+        self.function_docs_panel.toggle()
 
     def get_textboxes(self):
         boxes = [self.textbox, self.x_start_box, self.x_end_box]
@@ -507,7 +721,6 @@ class CheckHypothesisScreen:
     def run_check(self):
         self.deactivate_all_textboxes()
         self.save_message = ""
-        self.docs_message = ""
 
         raw_expression = self.textbox.text.strip()
         expression = normalize_expression(raw_expression)
@@ -516,37 +729,14 @@ class CheckHypothesisScreen:
             self.result_lines = ["Сначала введите гипотезу."]
             return
 
-        start, end, range_error = self.parse_range_pair(
+        x_start, x_end, x_range_error = self.parse_range_pair(
             self.x_start_box,
             self.x_end_box,
             "x",
         )
 
-        if range_error is not None:
-            self.result_lines = [range_error]
-            return
-
-        if self.variable_mode == "two":
-            y_start, y_end, y_range_error = self.parse_range_pair(
-                self.y_start_box,
-                self.y_end_box,
-                "y",
-            )
-
-            if y_range_error is not None:
-                self.result_lines = [y_range_error]
-                return
-
-            self.result_lines = [
-                "Режим двух переменных подготовлен в интерфейсе.",
-                "Проверка по двум переменным будет подключена после добавления функции в ядро.",
-                f"Диапазон x: от {start} до {end}.",
-                f"Диапазон y: от {y_start} до {y_end}.",
-            ]
-            return
-
-        if check_hypothesis is None:
-            self.result_lines = ["Не удалось подключить ядро."]
+        if x_range_error is not None:
+            self.result_lines = [x_range_error]
             return
 
         need_counterexamples = self.is_option_selected("Найти контрпримеры")
@@ -557,64 +747,131 @@ class CheckHypothesisScreen:
         self.last_counterexamples = []
         self.graph_data = {}
         self.available_graph_numbers = []
-
         self.show_counterexamples_button = False
         self.show_graph_button = False
+        self.graph_dimension = "1d"
 
-        lines = [f"Гипотеза: {expression}"]
+        if self.variable_mode == "one":
+            if check_hypothesis is None:
+                self.result_lines = ["Не удалось подключить ядро."]
+                return
 
-        result = check_hypothesis(
-            expression=expression,
-            variable_name="n",
-            start=start,
-            end=end,
-            max_counterexamples=end - start + 1,
-        )
+            result = check_hypothesis(
+                expression=expression,
+                variable_name="x",
+                start=x_start,
+                end=x_end,
+                max_checks=MAX_RANGE_VALUE,
+            )
 
-        if result.error_code is not None:
-            lines.append(get_error_message(result.error_code))
+            lines = [f"Гипотеза: {expression}"]
+
+            if result.error_code is not None:
+                lines.append(get_error_message(result.error_code))
+                self.result_lines = lines
+                return
+
+            self.last_counterexamples = result.counterexamples
+
+            if result.is_true:
+                lines.append("Результат: гипотеза верна на проверенном диапазоне.")
+            else:
+                lines.append("Результат: гипотеза неверна на проверенном диапазоне.")
+
+                if result.counterexamples:
+                    lines.append(f"Минимальный контрпример: {min(result.counterexamples)}")
+
+            lines.append(f"Проверено значений: {result.checked_count}.")
+
+            if need_counterexamples and self.last_counterexamples:
+                self.show_counterexamples_button = True
+
+            if need_truth_graph:
+                if build_values is None:
+                    lines.append("Модуль графиков из ядра не подключён.")
+                else:
+                    values_result = build_values(
+                        expression=expression,
+                        variable_name="x",
+                        start=x_start,
+                        end=x_end,
+                    )
+
+                    if values_result.error_code is not None:
+                        lines.append(get_error_message(values_result.error_code))
+                        self.result_lines = lines
+                        return
+
+                    truth_points = get_truth_graph_points(values_result)
+
+                    if truth_points is None:
+                        lines.append("График истинности можно строить только для булевой гипотезы.")
+                    else:
+                        self.graph_dimension = "1d"
+                        self.available_graph_numbers.append(1)
+                        self.graph_data[1] = truth_points
+                        self.show_graph_button = True
+
             self.result_lines = lines
             return
 
-        self.last_counterexamples = result.counterexamples
+        y_start, y_end, y_range_error = self.parse_range_pair(
+            self.y_start_box,
+            self.y_end_box,
+            "y",
+        )
 
-        if result.is_true:
+        if y_range_error is not None:
+            self.result_lines = [y_range_error]
+            return
+
+        if check_hypothesis_2d is None or get_counterexample_points is None:
+            self.result_lines = ["Не удалось подключить модуль проверки двух переменных."]
+            return
+
+        result_2d = check_hypothesis_2d(
+            expression=expression,
+            x_start=x_start,
+            x_end=x_end,
+            y_start=y_start,
+            y_end=y_end,
+            x_variable_name="x",
+            y_variable_name="y",
+            max_points=MAX_RANGE_VALUE,
+        )
+
+        lines = [f"Гипотеза: {expression}"]
+
+        if result_2d.error_code is not None:
+            lines.append(get_error_message(result_2d.error_code))
+            self.result_lines = lines
+            return
+
+        counterexamples = get_counterexample_points(result_2d)
+        self.last_counterexamples = counterexamples
+
+        if result_2d.is_true:
             lines.append("Результат: гипотеза верна на проверенном диапазоне.")
-            lines.append(f"Проверено значений: {result.checked_count}.")
         else:
             lines.append("Результат: гипотеза неверна на проверенном диапазоне.")
-            lines.append(f"Проверено значений: {result.checked_count}.")
 
-            if result.counterexamples:
-                lines.append(f"Минимальный контрпример: {min(result.counterexamples)}")
+            if counterexamples:
+                first_counterexample = counterexamples[0]
+                lines.append(
+                    "Первый найденный контрпример: "
+                    f"({first_counterexample[0]}, {first_counterexample[1]})"
+                )
 
-        if need_counterexamples and self.last_counterexamples:
+        lines.append(f"Проверено пар значений: {result_2d.checked_count}.")
+
+        if need_counterexamples and counterexamples:
             self.show_counterexamples_button = True
 
         if need_truth_graph:
-            if build_values is None:
-                lines.append("Модуль графиков из ядра не подключён.")
-            else:
-                values_result = build_values(
-                    expression=expression,
-                    variable_name="n",
-                    start=start,
-                    end=end,
-                )
-
-                if values_result.error_code is not None:
-                    lines.append(get_error_message(values_result.error_code))
-                    self.result_lines = lines
-                    return
-
-                truth_points = get_truth_graph_points(values_result)
-
-                if truth_points is None:
-                    lines.append("График истинности можно строить только для булевой гипотезы.")
-                else:
-                    self.available_graph_numbers.append(1)
-                    self.graph_data[1] = truth_points
-                    self.show_graph_button = True
+            self.graph_dimension = "2d"
+            self.available_graph_numbers.append(2)
+            self.graph_data[2] = get_truth_graph_points_2d(result_2d)
+            self.show_graph_button = True
 
         self.result_lines = lines
 
@@ -628,6 +885,9 @@ class CheckHypothesisScreen:
         )
 
     def open_graph(self, graph_number):
+        if self.graph_dimension == "2d":
+            graph_number = 2
+
         if graph_number not in self.available_graph_numbers:
             return
 
@@ -662,8 +922,8 @@ class CheckHypothesisScreen:
         self.show_graph_button = False
 
         self.save_message = ""
-        self.docs_message = ""
         self.scroll_offset = 0
+        self.graph_dimension = "1d"
 
         self.deactivate_all_textboxes()
 
@@ -713,6 +973,9 @@ class CheckHypothesisScreen:
             self.app.set_screen("menu")
             return
 
+        if self.function_docs_panel.handle_event(event):
+            return
+
         if event.type == pygame.MOUSEWHEEL:
             self.scroll_offset -= event.y * 45
             return
@@ -723,7 +986,7 @@ class CheckHypothesisScreen:
         if self.handle_result_buttons(event):
             return
 
-        if self.docs_button.handle_event(event):
+        if self.functions_button.handle_event(event):
             return
 
         if self.check_button.handle_event(event):
@@ -746,6 +1009,8 @@ class CheckHypothesisScreen:
     def update(self, dt):
         for textbox in self.get_textboxes():
             textbox.update(dt)
+
+        self.function_docs_panel.update(dt)
 
     def draw_range_inputs(self, surface, center_x, y, label, start_box, end_box):
         label_surface = self.text_font.render(f"Диапазон проверки {label}:", True, TEXT)
@@ -819,7 +1084,7 @@ class CheckHypothesisScreen:
                 color = (255, 150, 150)
             elif "верна" in line:
                 color = (100, 255, 170)
-            elif "Минимальный" in line:
+            elif "контрпример" in line:
                 color = ORANGE
 
             line_surface = self.result_font.render(line, True, color)
@@ -871,14 +1136,8 @@ class CheckHypothesisScreen:
         center_x = content_rect.centerx
         base_y = content_rect.top - self.scroll_offset
 
-        self.docs_button.rect.topleft = (28, base_y + 18)
-        self.docs_button.draw(surface)
-
-        docs_label = self.small_font.render("Все функции", True, TEXT)
-        surface.blit(
-            docs_label,
-            (self.docs_button.rect.right + 10, self.docs_button.rect.top + 10),
-        )
+        self.functions_button.rect.topleft = (28, base_y + 18)
+        self.functions_button.draw(surface)
 
         title = self.title_font.render("Выбрать опции", True, CYAN)
         title_rect = title.get_rect(center=(center_x, base_y + 58))
@@ -956,10 +1215,10 @@ class CheckHypothesisScreen:
         self.check_button.draw(surface)
 
         result_y = self.check_button.rect.bottom + 34
-
         result_y = self.draw_result(surface, center_x - 410, result_y)
 
         draw_footer(surface, content_rect, self.small_font)
+        self.function_docs_panel.draw(surface, content_rect)
 
         self.content_height = max(
             result_y - content_rect.top + self.scroll_offset + 70,
@@ -980,7 +1239,7 @@ class FunctionScreen:
         self.function_box = TextBox(
             rect=(0, 0, 760, 60),
             font=self.button_font,
-            placeholder="Например: phi(n), n ** 2, tau(n)",
+            placeholder="Например: phi(x), x ** 2, tau(x)",
             text_color=TEXT,
             placeholder_color=MUTED,
             bg_color=(48, 58, 85),
@@ -1020,11 +1279,11 @@ class FunctionScreen:
             icon_name="function",
         )
 
-        self.hints_button = Button(
-            rect=(0, 0, 46, 38),
-            text="",
-            font=self.button_font,
-            on_click=self.show_hints,
+        self.functions_button = Button(
+            rect=(0, 0, 170, 42),
+            text="Все функции",
+            font=self.small_font,
+            on_click=self.toggle_functions,
             bg_color=(35, 45, 70),
             hover_color=(50, 65, 100),
             text_color=TEXT,
@@ -1033,6 +1292,8 @@ class FunctionScreen:
             icon_name="menu",
             icon_color=TEXT,
         )
+
+        self.function_docs_panel = FunctionDocsPanel(self.text_font, self.small_font)
 
         self.reset_button = Button(
             rect=(0, 0, 250, 50),
@@ -1066,7 +1327,6 @@ class FunctionScreen:
 
         self.points = []
         self.message = ""
-        self.hints_message = ""
 
         self.zoom = 1.0
         self.pan_x = 0
@@ -1076,8 +1336,8 @@ class FunctionScreen:
         self.last_mouse_pos = None
         self.graph_rect = None
 
-    def show_hints(self):
-        self.hints_message = "Примеры: n ** 2, phi(n), tau(n), fib(n), is_prime(n)"
+    def toggle_functions(self):
+        self.function_docs_panel.toggle()
 
     def parse_range(self):
         if not self.start_box.text or not self.end_box.text:
@@ -1123,7 +1383,7 @@ class FunctionScreen:
 
         result = build_values(
             expression=expression,
-            variable_name="n",
+            variable_name="x",
             start=start,
             end=end,
         )
@@ -1148,8 +1408,7 @@ class FunctionScreen:
         self.dragging_graph = False
         self.last_mouse_pos = None
 
-        self.message = "Функциональный график пока использует существующий build_values из ядра."
-        self.hints_message = ""
+        self.message = ""
 
     def save_to_library(self):
         self.message = "Сохранение функции в библиотеку добавим позже."
@@ -1157,6 +1416,9 @@ class FunctionScreen:
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.app.set_screen("menu")
+            return
+
+        if self.function_docs_panel.handle_event(event):
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1195,7 +1457,7 @@ class FunctionScreen:
         if self.keyboard.handle_event(event):
             return
 
-        if self.hints_button.handle_event(event):
+        if self.functions_button.handle_event(event):
             return
 
         if self.build_button.handle_event(event):
@@ -1215,6 +1477,7 @@ class FunctionScreen:
         self.function_box.update(dt)
         self.start_box.update(dt)
         self.end_box.update(dt)
+        self.function_docs_panel.update(dt)
 
     def draw_range_inputs(self, surface, center_x, y):
         label_surface = self.text_font.render("Диапазон:", True, TEXT)
@@ -1249,14 +1512,8 @@ class FunctionScreen:
 
         center_x = content_rect.centerx
 
-        self.hints_button.rect.topleft = (28, content_rect.top + 18)
-        self.hints_button.draw(surface)
-
-        hints_label = self.small_font.render("Подсказки", True, TEXT)
-        surface.blit(
-            hints_label,
-            (self.hints_button.rect.right + 10, self.hints_button.rect.top + 10),
-        )
+        self.functions_button.rect.topleft = (28, content_rect.top + 18)
+        self.functions_button.draw(surface)
 
         title = self.title_font.render("Введите функцию:", True, CYAN)
         title_rect = title.get_rect(center=(center_x, content_rect.top + 58))
@@ -1315,6 +1572,7 @@ class FunctionScreen:
         self.reset_button.draw(surface)
 
         draw_footer(surface, content_rect, self.small_font)
+        self.function_docs_panel.draw(surface, content_rect)
 
 
 class CounterexamplesScreen:
@@ -1348,11 +1606,11 @@ class CounterexamplesScreen:
         self.scroll_offset = 0
         self.lines = []
 
-        numbers_per_line = 12
+        values_per_line = 8
 
-        for index in range(0, len(counterexamples), numbers_per_line):
-            part = counterexamples[index:index + numbers_per_line]
-            self.lines.append(", ".join(str(value) for value in part))
+        for index in range(0, len(counterexamples), values_per_line):
+            part = counterexamples[index:index + values_per_line]
+            self.lines.append(", ".join(format_counterexample(value) for value in part))
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -1453,10 +1711,10 @@ class GraphScreen:
 
         self.back_button.draw(surface)
 
-        if self.graph_number == 1:
-            title_text = "График истинности гипотезы"
+        if self.graph_number == 2:
+            title_text = "График истинности гипотезы от x и y"
         else:
-            title_text = f"График {self.graph_number}"
+            title_text = "График истинности гипотезы"
 
         title = self.title_font.render(title_text, True, CYAN)
         surface.blit(title, title.get_rect(center=(center_x, content_rect.top + 70)))
@@ -1471,12 +1729,23 @@ class GraphScreen:
             content_rect.height - 245,
         )
 
-        draw_truth_graph(
-            surface,
-            graph_rect,
-            self.points,
-            self.text_font,
-            self.small_font,
-        )
+        if self.graph_number == 2:
+            draw_truth_graph_2d(
+                surface,
+                graph_rect,
+                self.points,
+                self.text_font,
+                self.small_font,
+                pygame.mouse.get_pos(),
+            )
+        else:
+            draw_truth_graph(
+                surface,
+                graph_rect,
+                self.points,
+                self.text_font,
+                self.small_font,
+                pygame.mouse.get_pos(),
+            )
 
         draw_footer(surface, content_rect, self.small_font)
