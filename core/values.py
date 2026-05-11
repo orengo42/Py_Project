@@ -8,7 +8,7 @@ from core.eval import (
 
 def build_values(
     expression: str,
-    variable_name: str = "n",
+    variable_name: str = "x",
     start: int = 1,
     end: int = 100,
 ) -> ValuesResult:
