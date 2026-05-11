@@ -1,4 +1,5 @@
 import ast
+import keyword
 
 from core.number_theory import ALLOWED_FUNCTIONS
 
@@ -44,25 +45,47 @@ class SafeExpressionError(Exception):
         self.code = code
 
 
-def validate_expression(expression: str, variable_name: str) -> ast.Expression:
-    if expression.strip() == "":
-        raise SafeExpressionError("EMPTY_EXPRESSION")
+def validate_variable_name(variable_name: str) -> None:
+    if variable_name.strip() == "":
+        raise SafeExpressionError("EMPTY_VARIABLE_NAME")
+
+    if not variable_name.isidentifier():
+        raise SafeExpressionError("INVALID_VARIABLE_NAME")
+
+    if keyword.iskeyword(variable_name):
+        raise SafeExpressionError("INVALID_VARIABLE_NAME")
 
     if variable_name in ALLOWED_FUNCTIONS:
         raise SafeExpressionError("VARIABLE_NAME_CONFLICT")
+
+
+def validate_expression_for_variables(
+    expression: str,
+    variable_names: set[str],
+) -> ast.Expression:
+    if expression.strip() == "":
+        raise SafeExpressionError("EMPTY_EXPRESSION")
+
+    if len(variable_names) == 0:
+        raise SafeExpressionError("NO_VARIABLES")
+
+    for variable_name in variable_names:
+        validate_variable_name(variable_name)
 
     try:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError:
         raise SafeExpressionError("SYNTAX_ERROR")
 
+    function_names = set(ALLOWED_FUNCTIONS.keys())
+
     for node in ast.walk(tree):
         if not isinstance(node, ALLOWED_NODE_TYPES):
             raise SafeExpressionError("FORBIDDEN_EXPRESSION")
 
         if isinstance(node, ast.Name):
-            is_variable = node.id == variable_name
-            is_function = node.id in ALLOWED_FUNCTIONS
+            is_variable = node.id in variable_names
+            is_function = node.id in function_names
 
             if not is_variable and not is_function:
                 raise SafeExpressionError("UNKNOWN_NAME")
@@ -71,7 +94,7 @@ def validate_expression(expression: str, variable_name: str) -> ast.Expression:
             if not isinstance(node.func, ast.Name):
                 raise SafeExpressionError("FORBIDDEN_FUNCTION_CALL")
 
-            if node.func.id not in ALLOWED_FUNCTIONS:
+            if node.func.id not in function_names:
                 raise SafeExpressionError("UNKNOWN_FUNCTION")
 
             if len(node.keywords) > 0:
@@ -84,9 +107,12 @@ def validate_expression(expression: str, variable_name: str) -> ast.Expression:
     return tree
 
 
-def compile_expression(expression: str, variable_name: str):
+def compile_expression_for_variables(
+    expression: str,
+    variable_names: set[str],
+):
     try:
-        tree = validate_expression(expression, variable_name)
+        tree = validate_expression_for_variables(expression, variable_names)
         return compile(tree, filename="<user_expression>", mode="eval")
     except SafeExpressionError:
         raise
@@ -94,14 +120,13 @@ def compile_expression(expression: str, variable_name: str):
         raise SafeExpressionError("COMPILE_ERROR")
 
 
-def evaluate_compiled_expression(
+def evaluate_compiled_expression_for_variables(
     code,
-    variable_name: str,
-    variable_value: int,
+    variables: dict[str, int],
 ) -> object:
     try:
         local_names = ALLOWED_FUNCTIONS.copy()
-        local_names[variable_name] = variable_value
+        local_names.update(variables)
 
         return eval(code, {"__builtins__": {}}, local_names)
     except ZeroDivisionError:
@@ -116,10 +141,35 @@ def evaluate_compiled_expression(
         raise SafeExpressionError("RUNTIME_ERROR")
 
 
+def compile_expression(expression: str, variable_name: str = "x"):
+    return compile_expression_for_variables(
+        expression,
+        {variable_name},
+    )
+
+
+def evaluate_compiled_expression(
+    code,
+    variable_name: str,
+    variable_value: int,
+) -> object:
+    return evaluate_compiled_expression_for_variables(
+        code,
+        {
+            variable_name: variable_value,
+        },
+    )
+
+
 def evaluate_expression(
     expression: str,
     variable_name: str,
     variable_value: int,
 ) -> object:
     code = compile_expression(expression, variable_name)
-    return evaluate_compiled_expression(code, variable_name, variable_value)
+
+    return evaluate_compiled_expression(
+        code,
+        variable_name,
+        variable_value,
+    )

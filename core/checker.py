@@ -8,10 +8,10 @@ from core.eval import (
 
 def check_hypothesis(
     expression: str,
-    variable_name: str = "n",
+    variable_name: str = "x",
     start: int = 1,
     end: int = 100000,
-    max_counterexamples: int = 20,
+    max_checks: int = 10000,
 ) -> CheckResult:
     if start > end:
         return CheckResult(
@@ -23,6 +23,20 @@ def check_hypothesis(
             is_true=False,
             counterexamples=[],
             error_code="INVALID_RANGE",
+        )
+
+    total_checks = end - start + 1
+
+    if total_checks > max_checks:
+        return CheckResult(
+            expression=expression,
+            variable_name=variable_name,
+            start=start,
+            end=end,
+            checked_count=0,
+            is_true=False,
+            counterexamples=[],
+            error_code="TOO_MANY_POINTS",
         )
 
     try:
@@ -77,9 +91,6 @@ def check_hypothesis(
 
         if not result:
             counterexamples.append(variable_value)
-
-            if len(counterexamples) >= max_counterexamples:
-                break
 
     return CheckResult(
         expression=expression,
