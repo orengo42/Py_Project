@@ -8,6 +8,7 @@ try:
         CheckHypothesisScreen,
         CounterexamplesScreen,
         GraphScreen,
+        FunctionScreen,
     )
 except ImportError:
     from screens import (
@@ -15,15 +16,17 @@ except ImportError:
         CheckHypothesisScreen,
         CounterexamplesScreen,
         GraphScreen,
+        FunctionScreen,
     )
 
 
 INITIAL_WINDOW_WIDTH = 1100
-INITIAL_WINDOW_HEIGHT = 720
-MIN_WINDOW_WIDTH = 900
-MIN_WINDOW_HEIGHT = 620
+INITIAL_WINDOW_HEIGHT = 760
+MIN_WINDOW_WIDTH = 980
+MIN_WINDOW_HEIGHT = 680
 
 APP_TITLE = "Проверка математических гипотез"
+HEADER_HEIGHT = 0
 
 
 class App:
@@ -55,19 +58,38 @@ class App:
             "check": CheckHypothesisScreen(self),
             "counterexamples": CounterexamplesScreen(self),
             "graph": GraphScreen(self),
+            "function": FunctionScreen(self),
         }
 
         self.current_screen_name = "menu"
         self.current_screen = self.screens[self.current_screen_name]
 
     def create_icon_if_needed(self):
+        import os
+        import pygame
+
         os.makedirs(self.assets_dir, exist_ok=True)
 
-        if os.path.exists(self.icon_path):
-            return
+        surface = pygame.Surface((64, 64), pygame.SRCALPHA)
 
-        surface = pygame.Surface((32, 32), pygame.SRCALPHA)
-        pygame.draw.circle(surface, (220, 40, 40), (16, 16), 13)
+        for y in range(64):
+            t = y / 63
+            r = int(70 + (165 - 70) * t)
+            g = int(90 + (40 - 90) * t)
+            b = int(230 + (255 - 230) * t)
+            pygame.draw.line(surface, (r, g, b), (0, y), (64, y))
+
+        pygame.draw.rect(surface, (255, 255, 255, 35), (2, 2, 60, 60), border_radius=14)
+
+        sigma_points = [
+            (43, 15),
+            (23, 15),
+            (33, 31),
+            (23, 48),
+            (43, 48),
+        ]
+        pygame.draw.lines(surface, (255, 255, 255), False, sigma_points, 6)
+
         pygame.image.save(surface, self.icon_path)
 
     def set_screen(self, name):
@@ -90,6 +112,9 @@ class App:
     def close(self):
         self.running = False
 
+    def draw_header(self):
+        pass
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -104,7 +129,6 @@ class App:
                     (self.width, self.height),
                     pygame.RESIZABLE,
                 )
-
                 continue
 
             self.current_screen.handle_event(event)
@@ -113,17 +137,17 @@ class App:
         self.current_screen.update(dt)
 
     def draw(self):
-        self.screen.fill((235, 238, 245))
+        self.screen.fill((10, 14, 30))
+        self.draw_header()
 
         content_rect = pygame.Rect(
             0,
-            0,
+            HEADER_HEIGHT,
             self.width,
-            self.height,
+            self.height - HEADER_HEIGHT,
         )
 
         self.current_screen.draw(self.screen, content_rect)
-
         pygame.display.flip()
 
     def run(self):
