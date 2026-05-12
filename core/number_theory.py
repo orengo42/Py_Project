@@ -91,6 +91,7 @@ def _to_float(value: object) -> float:
 
 def _factorize_positive(n: int) -> dict[int, int]:
     _require_positive(n)
+    _require_small_int(n)
 
     factors = sympy_factorint(n)
 
