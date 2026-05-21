@@ -5,7 +5,9 @@ from core.eval import (
     evaluate_compiled_expression_for_variables,
 )
 
+from core.Profiler import profile_helper
 
+@profile_helper("check_hypothesis_2d.prof")
 def check_hypothesis_2d(
     expression: str,
     x_start: int = 1,
@@ -158,7 +160,7 @@ def check_hypothesis_2d(
         points=points,
     )
 
-
+@profile_helper("get_counterexample_points.prof")
 def get_counterexample_points(
     result: Hypothesis2DResult,
 ) -> list[tuple[int, int]]:
@@ -175,7 +177,7 @@ def get_counterexample_points(
 
     return counterexamples
 
-
+@profile_helper("get_error_points.prof")
 def get_error_points(
     result: Hypothesis2DResult,
 ) -> list[tuple[int, int, str]]:
@@ -193,7 +195,7 @@ def get_error_points(
 
     return errors
 
-
+@profile_helper("get_plot_cells.prof")
 def get_plot_cells(
     result: Hypothesis2DResult,
 ) -> list[tuple[int, int, str, str | None]]:
@@ -218,10 +220,10 @@ def get_plot_cells(
 
     return cells
 
-
+@profile_helper("count_counterexample.prof")
 def count_counterexamples(result: Hypothesis2DResult) -> int:
     return len(get_counterexample_points(result))
 
-
+@profile_helper("count_error_points.prof")
 def count_error_points(result: Hypothesis2DResult) -> int:
     return len(get_error_points(result))

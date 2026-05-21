@@ -4,8 +4,10 @@ from core.eval import (
     compile_expression,
     evaluate_compiled_expression,
 )
+from core.Profiler import profile_helper
 
 
+@profile_helper("check_hypothesis.prof")
 def check_hypothesis(
     expression: str,
     variable_name: str = "x",
